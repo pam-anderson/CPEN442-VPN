@@ -16,12 +16,12 @@ dh_shared_secret = 0
 def computeDHShared():
     global dh_compute_shared
     dh_compute_shared = Decimal(pow(int(dh_2048_g), int(dh_private_key), int(dh_2048_p)))
-    print "Send over public channel: " + str(int(dh_compute_shared))
+    print "Send over public channel: " + str(int(dh_compute_shared)) + "\n"
 
 def getDHSharedSecret(shared):
     global dh_shared_secret
     dh_shared_secret = Decimal(pow(int(shared), int(dh_private_key), int(dh_2048_p)))
-    print "Shared secret: " + str(int(dh_shared_secret))
+    print "Shared secret: " + str(int(dh_shared_secret)) + "\n"
     
 def getPrivateKey():
     global dh_private_key
@@ -30,12 +30,29 @@ def getPrivateKey():
     print "Private key: " + hex(dh_private_key)
     dh_private_key = Decimal(dh_private_key)
 
+
 def server():
     getPrivateKey()
     computeDHShared()
     buffer_size = 1024
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((ip, port))
+    # For Testing
+    #s.bind((ip, port))
+
+    # User can specify a port number
+    try:
+        serverport = input("Specify a port number (5007 used if not specified): ")
+        try:
+            s.bind((socket.gethostname(), serverport))
+        # If invalid port number, let user know and exit
+        except Exception as error:
+            print "Invalid port number. Exiting..."
+            exit()
+    # Default port number used
+    except Exception as exception:
+        s.bind((socket.gethostname(), port))
+
+    print "Server listening..."
     s.listen(1)
     
     conn, addr = s.accept()
@@ -43,7 +60,7 @@ def server():
     while 1:
         data = conn.recv(buffer_size)
         if not data: break
-        print "received data:", data
+        print "received data:", data, "\n"
         getDHSharedSecret(Decimal(data))
         conn.send(str(dh_compute_shared)) # echo    
     conn.close()
@@ -55,13 +72,29 @@ def client():
     msg = "Hello, World."
     
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect((ip, port))
+    # For Testing
+    #s.connect((ip, port))
+    hostname = raw_input("Enter hostname or IP address: ")
+
+    # User can specify a port number
+    try:
+        clientport = input("Specify a port number (5007 used if not specified): ")
+        try:
+            s.connect((socket.gethostname(), clientport))
+        # Could not connect, let user know and exit
+        except Exception as error:
+            print "Invalid port number. Exiting..."
+            exit()
+    # Default port number used
+    except Exception as exception:
+        s.connect((socket.gethostname(), port))
+
     s.send(str(dh_compute_shared))
     data = s.recv(buffer_size)
     getDHSharedSecret(Decimal(data))
     s.close()
-    print "received data: ", data
-    
+    print "received data: ", data, "\n"
+
 
 def main():
     server()
