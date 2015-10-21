@@ -7,7 +7,8 @@ In the other, do:
 	
 	
 	
-To run the java: 
+To run the java:
+ 
 1) double click and open two instances of the jar file (it is an executable)  
 
 2) on the first one, configure as needed and then click start connection 
