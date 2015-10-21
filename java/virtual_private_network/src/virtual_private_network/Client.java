@@ -4,19 +4,13 @@ import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.math.BigInteger;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.spec.InvalidKeySpecException;
-import java.util.Random;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 
 public class Client extends Crypto {
@@ -27,53 +21,20 @@ public class Client extends Crypto {
 	
 	private Socket client;
 	
-	//secret value for DH exchange
-	private BigInteger b;
-	
-	//used to encrypt messages sent after communication established
-	private SecretKey msgKey;
-	
-	private BufferedReader in;
-	private DataOutputStream out;
-	
 	public Client(String host, int port) throws UnknownHostException, IOException {
 		VirtualPrivateNetwork.log('\n' + "Connecting to server..." + '\n');
 		client = new Socket(host, port);
 		VirtualPrivateNetwork.log("Connection with server has been established");
 		
-		in = new BufferedReader(new InputStreamReader(client.getInputStream()));
-		out = new DataOutputStream(client.getOutputStream());
+		setIn(new BufferedReader(new InputStreamReader(client.getInputStream())));
+		setOut(new DataOutputStream(client.getOutputStream()));
 		
 		authenticate();
-		
-	}
-	
-	/**
-	 * Writes to the server
-	 */
-	public void write(String output) {
-		try {
-			String mac = generateMAC(output, VirtualPrivateNetwork.getMACKey());
-			log("MAC: " + mac);
-			
-			output += DIVIDER + mac;
-			output = encryptWithAES(output, msgKey);
-			
-			VirtualPrivateNetwork.log('\n' + "Outgoing message:" + output);
-			out.writeBytes(output + '\n');
-		} catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException
-				| BadPaddingException | IOException e) {
-			log("Cannot write or encrypt messages to server.");
-			log(e.getMessage());
-			return;
-		}
-		
 	}
 	
 	private void authenticate() {
-		//generates a random number for the secret value for DH exchange
-		Random rand = new Random(System.currentTimeMillis());
-		b = BigInteger.valueOf(rand.nextInt(MIN_SECRET_VALUE) + MIN_SECRET_VALUE);
+		//generates secret value for DH exchange
+		generateSecretValue();
 		
 		//creates private key from previously established client's private key string
 		PrivateKey pvKey;
@@ -112,7 +73,7 @@ public class Client extends Crypto {
 		}
 		
 		//sign the message that includes timestamp and shared DH with the client's private key
-		String signedMsg = signAuthenticationMessage(b, pvKey);
+		String signedMsg = signAuthenticationMessage(pvKey);
 		if (signedMsg == null) {
 			log("Authentication failed");
 			return;
@@ -169,7 +130,7 @@ public class Client extends Crypto {
 		parts = response.split(DIVIDER);
 		
 		//calculates the encryption key using g^a mod p, sent in the message and the client's secret value b
-		msgKey = calculateMessageEncryptionKey(parts[1], b);
+		setMessageKey(calculateMessageEncryptionKey(parts[1]));
 		if (msgKey == null) {
 			log("Authentication failed");
 			return;
@@ -189,5 +150,7 @@ public class Client extends Crypto {
 		
 		log('\n' + "Communication established." + '\n');
 		VirtualPrivateNetwork.connect(true);
+		
+		communicate();
 	}
 }

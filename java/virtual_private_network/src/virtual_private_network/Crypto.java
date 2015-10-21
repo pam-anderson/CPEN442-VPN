@@ -1,5 +1,8 @@
 package virtual_private_network;
 
+import java.io.BufferedReader;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.math.BigInteger;
 import java.security.InvalidKeyException;
 import java.security.Key;
@@ -11,6 +14,7 @@ import java.security.PublicKey;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Random;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
@@ -31,12 +35,20 @@ public class Crypto {
 	protected static final String ALGORITHM_HASH = "MD5";
 	protected static final String ALGORITHM_MAC = "HmacMD5";
 	protected static final String ALGORITHM_SIGNING = "RSA";
-
+	
+	//secret value to use in DH exchange
+	protected BigInteger n;
+	
+	//used to encrypt messages sent after communication established
+	protected SecretKey msgKey;
+	protected BufferedReader in;
+	protected DataOutputStream out;
+	
 	/**
 	 * Calculates the shared DH value for DH exchange
 	 * @return g^n mod p
 	 */
-	protected BigInteger calculateSharedDH(BigInteger n) {
+	protected BigInteger calculateSharedDH() {
 		BigInteger p = VirtualPrivateNetwork.getP();
 		BigInteger g = VirtualPrivateNetwork.getG();
 		return g.modPow(n, p);
@@ -46,7 +58,7 @@ public class Crypto {
 	 * Calculates the secret DH value used for message encryption
 	 * @return g^(ab) mod p
 	 */
-	protected BigInteger calculateSecretDH(BigInteger sharedDH, BigInteger n) {
+	protected BigInteger calculateSecretDH(BigInteger sharedDH) {
 		BigInteger p = VirtualPrivateNetwork.getP();
 		return sharedDH.modPow(n, p);
 	}
@@ -180,10 +192,10 @@ public class Crypto {
 	 * @param secretValue - secret value of the server/client to use for DH exchange
 	 * @return g^(ab) mod p
 	 */
-	protected SecretKey calculateMessageEncryptionKey(String sharedDH, BigInteger secretValue) {
+	protected SecretKey calculateMessageEncryptionKey(String sharedDH) {
 		SecretKey messageKey;
 		try {
-			BigInteger secretDH = calculateSecretDH(new BigInteger(sharedDH), secretValue);
+			BigInteger secretDH = calculateSecretDH(new BigInteger(sharedDH));
 			
 			log("Secret DH: " + secretDH.toString());
 			waitForCont();
@@ -239,11 +251,11 @@ public class Crypto {
 	 * @param pvKey - private key of sender
 	 * @return
 	 */
-	protected String signAuthenticationMessage(BigInteger secretValue, PrivateKey pvKey) {		
+	protected String signAuthenticationMessage(PrivateKey pvKey) {		
 		String signedMsg;
 		try {
 			long timestamp = System.currentTimeMillis();
-			BigInteger sharedDH = calculateSharedDH(secretValue);
+			BigInteger sharedDH = calculateSharedDH();
 				
 			log('\n' + "Signing timestamp (" + timestamp + ") and shared DH (" + sharedDH.toString() + ") for authentication..." + '\n');
 			
@@ -284,6 +296,14 @@ public class Crypto {
 		waitForCont();
 		
 		return encryptedMsg;
+	}
+	
+	/**
+	 * Generates a secret value to use in DH exchange
+	 */
+	protected void generateSecretValue() {
+		Random rand = new Random(System.currentTimeMillis());
+		n = BigInteger.valueOf(rand.nextInt(MIN_SECRET_VALUE) + MIN_SECRET_VALUE);
 	}
 	
 	/**
@@ -351,12 +371,97 @@ public class Crypto {
 	}
 	
 	/**
+	 * Decrypts the message and prints it on the display
+	 */
+	protected void readEncryptedMessage(String input) throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException {
+		log("Incoming message: " + input);
+		input = decryptWithAES(input, msgKey);
+		
+		String[] parts = input.split(DIVIDER);
+		
+		if (checkMAC(parts[0], parts[1]))
+			VirtualPrivateNetwork.display(parts[0]);
+		else
+			log("MAC incorrect.");
+	}
+	
+	/**
+	 * Validates the mac
+	 */
+	protected boolean checkMAC(String message, String mac) throws InvalidKeyException, NoSuchAlgorithmException {
+		String macCheck = generateMAC(message, VirtualPrivateNetwork.getMACKey());
+		log('\n' + "MAC: " + macCheck);
+		return macCheck.equals(mac);	
+	}
+	
+	/**
 	 * Convenient method for logging authentication process
 	 */
 	protected void log(String msg) {
 		VirtualPrivateNetwork.log(msg);
 	}
 
+	protected void setMessageKey(SecretKey msgKey) {
+		this.msgKey = msgKey;
+	}
+	
+	protected void setIn(BufferedReader in) {
+		this.in = in;
+	}
+	
+	protected void setOut(DataOutputStream out) {
+		this.out = out;
+	}
+	
+	/**
+	 * Receives and display messages from the client
+	 */
+	protected void communicate() {
+		Runnable readTask = new Runnable() {
+
+			@Override
+			public void run() {
+				try {
+					String input;
+					while ((input = in.readLine()) != null) {
+						readEncryptedMessage(input);
+						
+					}
+				} catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException
+						| BadPaddingException | IOException e) {
+					log("Cannot read or decrypt messages from client. Communication aborted.");
+					VirtualPrivateNetwork.connect(false);
+				}
+			}
+			
+		};
+		
+		Thread readThread = new Thread(readTask);
+		readThread.start();
+	}
+	
+	/**
+	 * Writes to the server
+	 */
+	public void write(String output) {
+		try {
+			String mac = generateMAC(output, VirtualPrivateNetwork.getMACKey());
+			log("MAC: " + mac);
+			
+			output += DIVIDER + mac;
+			output = encryptWithAES(output, msgKey);
+			
+			VirtualPrivateNetwork.log('\n' + "Outgoing message:" + output);
+			out.writeBytes(output + '\n');
+		} catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException
+				| BadPaddingException | IOException e) {
+			log("Cannot write or encrypt messages to server.");
+			log(e.getMessage());
+			return;
+		}
+		
+	}
+	
 	/**
 	 * Waits for continue button to be clicked before moving to the next step in authentication
 	 */

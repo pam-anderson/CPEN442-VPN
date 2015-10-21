@@ -4,20 +4,14 @@ import java.io.BufferedReader;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.math.BigInteger;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.spec.InvalidKeySpecException;
-import java.util.Random;
 
-import javax.crypto.BadPaddingException;
-import javax.crypto.IllegalBlockSizeException;
-import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 
 public class Server extends Crypto {
@@ -29,15 +23,6 @@ public class Server extends Crypto {
 	
 	private ServerSocket server;
 	
-	//secret value for DH exchange
-	private BigInteger a;
-	
-	//used to encrypt messages sent after communication established
-	private SecretKey msgKey;
-	
-	private BufferedReader in;
-	private DataOutputStream out;
-	
 	public Server(String host, int port) throws IOException {
 		log('\n' + "Creating a server with IP " + host + " at port " + port + "..." + '\n');
 		
@@ -48,23 +33,20 @@ public class Server extends Crypto {
 	}
 	
 	public void start() throws IOException {
-		while(true) {
-			log('\n' + "Waiting for client..." + '\n');
-			
-			Socket connection = server.accept();
-			log("Connection with client established"); 
-			
-			in = new BufferedReader(new InputStreamReader(connection.getInputStream()));
-			out = new DataOutputStream(connection.getOutputStream());
-			
-			authenticate();
-		}
+		log('\n' + "Waiting for client..." + '\n');
+		
+		Socket connection = server.accept();
+		log("Connection with client established"); 
+		
+		setIn(new BufferedReader(new InputStreamReader(connection.getInputStream())));
+		setOut(new DataOutputStream(connection.getOutputStream()));
+		
+		authenticate();
 	}
 	
 	private void authenticate() {
-		//generates a random number for the secret value for DH exchange
-		Random rand = new Random(System.currentTimeMillis());
-		a = BigInteger.valueOf(rand.nextInt(MIN_SECRET_VALUE) + MIN_SECRET_VALUE);
+		//generates secret value for DH exchange
+		generateSecretValue();
 		
 		//creates private key from previously established server's private key string
 		PrivateKey pvKey;
@@ -118,7 +100,7 @@ public class Server extends Crypto {
 		parts = response.split(DIVIDER);
 		
 		//calculates the encryption key using g^b mod p, sent in the message and the server's secret value a
-		msgKey = calculateMessageEncryptionKey(parts[1], a);
+		setMessageKey(calculateMessageEncryptionKey(parts[1]));
 		if (msgKey == null) {
 			log("Authentication failed");
 			return;
@@ -129,7 +111,7 @@ public class Server extends Crypto {
 		log("Timestamp: " + timestamp);
 		log("Current timestamp: " + System.currentTimeMillis() + '\n');
 		if (System.currentTimeMillis() - timestamp > 60000) {
-			log("Timestamp is invalid. Authentication failed.");
+			log("Timestamp is invalid");
 			return;
 		} else {
 			log("Timestamp valid");
@@ -153,7 +135,7 @@ public class Server extends Crypto {
 		}
 		
 		//sign the message that includes timestamp and shared DH with the server's private key
-		String signedMsg = signAuthenticationMessage(a, pvKey);
+		String signedMsg = signAuthenticationMessage(pvKey);
 		if (signedMsg == null) {
 			log("Authentication failed");
 			return;
@@ -181,38 +163,5 @@ public class Server extends Crypto {
 		VirtualPrivateNetwork.connect(true);
 		
 		communicate();
-	}
-	
-	/**
-	 * Receives and display messages from the client
-	 */
-	private void communicate() {
-		try {
-			String input;
-			while ((input = in.readLine()) != null) {
-				log("Incoming message: " + input);
-				input = decryptWithAES(input, msgKey);
-				
-				String[] parts = input.split(DIVIDER);
-				
-				if (checkMAC(parts[0], parts[1]))
-					VirtualPrivateNetwork.display(parts[0]);
-				else
-					log("MAC incorrect.");
-			}
-		} catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException
-				| BadPaddingException | IOException e) {
-			log("Cannot read or decrypt messages from client. Communication aborted.");
-			VirtualPrivateNetwork.connect(false);
-		}
-	}
-	
-	/**
-	 * Checks if the MAC is valid
-	 */
-	private boolean checkMAC(String message, String mac) throws InvalidKeyException, NoSuchAlgorithmException {
-		String macCheck = generateMAC(message, VirtualPrivateNetwork.getMACKey());
-		log('\n' + "MAC: " + macCheck);
-		return macCheck.equals(mac);		
 	}
 }

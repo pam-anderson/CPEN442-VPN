@@ -48,22 +48,24 @@ public class VirtualPrivateNetwork {
 	private static final String SHARED_VALUE = "Shared Secret Value";
 	private static final String RECEIVE = "Data as Received";
 	private static final String SEND = "Data to be Send";
+	private static final String SEND_BUTTON = "Send";
 	private static final String PROCESS = "Process";
 	
-	private static Client client;
+	private static Crypto program;
 	
 	private static JFrame frame;
 	
 	private static JButton serverButton;
 	private static JButton clientButton;
 	private static JButton startButton;
+	private static JButton sendButton;
 	private static JButton continueButton;
 	
 	private static JTextField host;
 	private static JTextField port;
 	private static JTextField sharedValue;
-	private static JTextField output;
 	
+	private static JTextArea output;
 	private static JTextArea input;
 	private static JTextArea process;
 	
@@ -87,7 +89,6 @@ public class VirtualPrivateNetwork {
 		init();
 	}
 	
-	
 	/**
 	 * Sets connected, used only when communication has been established or disconnected
 	 */
@@ -96,13 +97,15 @@ public class VirtualPrivateNetwork {
 		
 		if (connected) {
 			continueButton.setEnabled(false);
-			if (!mode)
-				output.setEditable(true);
+			sendButton.setEnabled(true);
+			output.setEditable(true);
 		} else {
 			continueButton.setEnabled(true);
-			if (!mode)
-				output.setEditable(false);
+			sendButton.setEnabled(false);
+			output.setEditable(false);
 		}
+		
+		frame.pack();
 	}
 	
 	public static void setContinue(boolean cont) {
@@ -179,6 +182,7 @@ public class VirtualPrivateNetwork {
 			public void actionPerformed(ActionEvent e) {
 				setClientMode();
 			}
+			
 		});
 		
 		startButton = new JButton(START);
@@ -229,10 +233,15 @@ public class VirtualPrivateNetwork {
 		gbc.gridy++;
 		frame.getContentPane().add(new JLabel(SEND), gbc);
 		
-		output = new JTextField(TEXT_FIELD_WIDTH);
+		output = new JTextArea(TEXT_FIELD_HEIGHT, TEXT_FIELD_WIDTH);
 		output.setEditable(false);
-		output.addActionListener(new ActionListener() {
-			
+		gbc.gridy++;
+		frame.getContentPane().add(new JScrollPane(output), gbc);
+		
+		sendButton = new JButton(SEND_BUTTON);
+		sendButton.setSize(100, 50);
+		sendButton.addActionListener(new ActionListener() {
+
 			//sends message with the enter button
 			@Override
 			public void actionPerformed(ActionEvent e) {
@@ -244,7 +253,8 @@ public class VirtualPrivateNetwork {
 			
 		});
 		gbc.gridy++;
-		frame.getContentPane().add(output, gbc);
+		frame.getContentPane().add(sendButton, gbc);
+		sendButton.setEnabled(false);
 		
 		gbc.gridy++;
 		frame.getContentPane().add(new JLabel(RECEIVE), gbc);
@@ -287,12 +297,6 @@ public class VirtualPrivateNetwork {
 	private static void setClientMode() {
 		mode = false;
 		
-		input.setEnabled(false);
-		input.setBackground(Color.LIGHT_GRAY);
-		
-		output.setEnabled(true);
-		output.setBackground(Color.WHITE);
-		
 		serverButton.setEnabled(true);
 		clientButton.setEnabled(false);
 	}
@@ -302,12 +306,6 @@ public class VirtualPrivateNetwork {
 	 */
 	private static void setServerMode() {
 		mode = true;
-		
-		input.setEnabled(true);
-		input.setBackground(Color.WHITE);
-		
-		output.setEnabled(false);
-		output.setBackground(Color.LIGHT_GRAY);
 		
 		serverButton.setEnabled(false);
 		clientButton.setEnabled(true);
@@ -324,8 +322,8 @@ public class VirtualPrivateNetwork {
 				@Override
 				public void run() {
 					try {
-						Server server = new Server(host.getText(), Integer.parseInt(port.getText()));
-						server.start();
+						program = new Server(host.getText(), Integer.parseInt(port.getText()));
+						((Server) program).start();
 					} catch (Exception e) {
 						log("Error with server");
 						log(e.getMessage());
@@ -345,7 +343,7 @@ public class VirtualPrivateNetwork {
 				@Override
 				public void run() {
 					try {
-						client = new Client(host.getText(), Integer.parseInt(port.getText()));
+						program = new Client(host.getText(), Integer.parseInt(port.getText()));
 					} catch (Exception e) {
 						log("Error with client");
 						log(e.getMessage());
@@ -366,7 +364,7 @@ public class VirtualPrivateNetwork {
 	 */
 	private static void write() {
 		try {
-			client.write(output.getText());
+			program.write(output.getText());
 		} catch (Exception e) {
 			log("Error writing to server");
 			log(e.getMessage());
@@ -400,7 +398,7 @@ public class VirtualPrivateNetwork {
 		serverButton.setEnabled(true);
 		clientButton.setEnabled(true);
 		startButton.setEnabled(true);
-		continueButton.setEnabled(false);
+		sendButton.setEnabled(false);;
 		
 		output.setEditable(false);
 		
