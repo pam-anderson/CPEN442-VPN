@@ -16,6 +16,7 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.KeyGenerator;
+import javax.crypto.Mac;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -24,22 +25,38 @@ import javax.xml.bind.DatatypeConverter;
 public class Crypto {
 	protected static final int MIN_SECRET_VALUE = 100;
 	
+	protected static final String DIVIDER = ";";
+	
 	protected static final String ALGORITHM_ENCRYPTION = "AES";
 	protected static final String ALGORITHM_HASH = "MD5";
+	protected static final String ALGORITHM_MAC = "HmacMD5";
 	protected static final String ALGORITHM_SIGNING = "RSA";
 
-	protected BigInteger calculateSharedDH(BigInteger a) {
+	/**
+	 * Calculates the shared DH value for DH exchange
+	 * @return g^n mod p
+	 */
+	protected BigInteger calculateSharedDH(BigInteger n) {
 		BigInteger p = VirtualPrivateNetwork.getP();
 		BigInteger g = VirtualPrivateNetwork.getG();
-		return g.modPow(a, p);
+		return g.modPow(n, p);
 	}
 	
-	protected BigInteger calculateSecretDH(BigInteger sharedDH, BigInteger a) {
+	/**
+	 * Calculates the secret DH value used for message encryption
+	 * @return g^(ab) mod p
+	 */
+	protected BigInteger calculateSecretDH(BigInteger sharedDH, BigInteger n) {
 		BigInteger p = VirtualPrivateNetwork.getP();
-		return sharedDH.modPow(a, p);
+		return sharedDH.modPow(n, p);
 	}
 
-	
+	/**
+	 * Encrypt with a private or public key using RSA algorithm
+	 * @param plaintext - text to encrypt
+	 * @param key - public/private key
+	 * @return ciphertext
+	 */
 	protected String encryptWithRSA(String plaintext, Key key) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException,
 			IllegalBlockSizeException, BadPaddingException {
 		
@@ -51,6 +68,12 @@ public class Crypto {
 		return DatatypeConverter.printBase64Binary(ciphertext);
 	}
 	
+	/**
+	 * Decrypt with a private or public key using RSA algorithm
+	 * @param ciphertext - text to decrypt
+	 * @param key - public/private key
+	 * @return plaintext
+	 */
 	protected String decryptWithRSA(String ciphertext, Key key) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException,
 			IllegalBlockSizeException, BadPaddingException {
 		
@@ -62,6 +85,12 @@ public class Crypto {
 		return new String(plaintext);
 	}
 	
+	/**
+	 * Encrypt using AES algorithm
+	 * @param plaintext - text to encrypt
+	 * @param key - AES key
+	 * @return ciphertext
+	 */
 	protected String encryptWithAES(String plaintext, Key key) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException,
 			IllegalBlockSizeException, BadPaddingException {
 		
@@ -73,6 +102,13 @@ public class Crypto {
 		return DatatypeConverter.printBase64Binary(ciphertext);
 	}
 	
+	
+	/**
+	 * Decrypt using AES algorithm
+	 * @param ciphertext - text to decrypt
+	 * @param key - AES key
+	 * @return plaintext
+	 */
 	protected String decryptWithAES(String ciphertext, Key key) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException,
 			IllegalBlockSizeException, BadPaddingException {
 		
@@ -85,10 +121,11 @@ public class Crypto {
 	}
 	
 	/**
-	 * Key is encrypted using server's public key, so use protected key to decrypt
-	 * This step verifies the identity of the server
-	 * @param encryptedKey
-	 * @return
+	 * Key is encrypted using receiver's public key, so use private key to decrypt
+	 * Used to verify receiver's identity
+	 * @param encryptedKey - encrypted encryption key
+	 * @param pvKey - private key of receiver
+	 * @return encryption key in bytes
 	 */
 	protected byte[] extractAuthenticationEncryptionKey(String encryptedKey, PrivateKey pvKey) {		
 		String enKeyString;
@@ -102,19 +139,21 @@ public class Crypto {
 		}
 		
 		byte[] enKeyBytes = DatatypeConverter.parseBase64Binary(enKeyString);			
-		log("Encryption key: " + enKeyString);
 		
+		log("Encryption key: " + enKeyString);
 		waitForCont();		
+		
 		return enKeyBytes;
 	}
 	
 	/**
 	 * First decrypts the message using the encryption key found before
-	 * Then decrypts the message with the client's public key
-	 * This step verifies the client's identity
-	 * @param response
-	 * @param enKeyBytes
-	 * @return
+	 * Then decrypts the message with the sender public key
+	 * Used to verify sender's identity
+	 * @param response - text to decrypt
+	 * @param enKeyBytes - encryption key in bytes
+	 * @param pbKey - public key of sender
+	 * @return authentication message that includes timestamp and g^n mod p
 	 */
 	protected String decryptAuthenticationMessage(String response, byte[] enKeyBytes, PublicKey pbKey) {
 		String message;
@@ -129,23 +168,26 @@ public class Crypto {
 		}
 		
 		log("Decrypted message: " + message);
-		log("Current timestamp: " + System.currentTimeMillis());
-		
 		waitForCont();
+		
 		return message;
 	}
 	
 	/**
-	 * Extracts the shared DH and creates a secret DH to use as a session key for encrypting and decrypting data transferred
-	 * This steps ensures confidentiality of data transfered because the secret DH is forgotten after this session
-	 * @param response
-	 * @return
+	 * Extracts the shared DH and calculates a secret DH to use as a session key for encrypting and decrypting data transferred
+	 * Session key is used to encrypt messages sent and will be forgotten later
+	 * @param sharedDH - g^n mod p
+	 * @param secretValue - secret value of the server/client to use for DH exchange
+	 * @return g^(ab) mod p
 	 */
-	protected SecretKey extractMessageEncryptionKey(String response, BigInteger secretValue) {
+	protected SecretKey calculateMessageEncryptionKey(String sharedDH, BigInteger secretValue) {
 		SecretKey messageKey;
 		try {
-			BigInteger secretDH = calculateSecretDH(new BigInteger(response), secretValue);
+			BigInteger secretDH = calculateSecretDH(new BigInteger(sharedDH), secretValue);
+			
 			log("Secret DH: " + secretDH.toString());
+			waitForCont();
+			
 			messageKey = generateMessageKey(secretDH);
 		} catch (NoSuchAlgorithmException e) {
 			log("Extracting message encryption key from given shared shared DH failed");
@@ -154,17 +196,17 @@ public class Crypto {
 		}
 		
 		log("Message encryption key: " + DatatypeConverter.printBase64Binary(messageKey.getEncoded()));
-		
 		waitForCont();
+		
 		return messageKey;		
 	}
 	
 	/**
-	 * Encrypt the authentication encryption key with the client's public key
-	 * This step serves to authenticate the client because only he or she can decrypt this key
-	 * 
-	 * @param enKey
-	 * @return
+	 * Encrypt the authentication encryption key with the receiver's public key
+	 * Used to authenticate the receiver because it could only be decrypted with their private key
+	 * @param enKey - encryption key to encrypt
+	 * @param pbKey - public key of receiver
+	 * @return encrypted encryption key
 	 */
 	protected String encryptAuthenticationEncryptionKey(SecretKey enKey, PublicKey pbKey) {
 		String encryptedKey;
@@ -172,7 +214,10 @@ public class Crypto {
 			log('\n' + "Encrypting AES key..." + '\n');
 			
 			String encryptionKey = DatatypeConverter.printBase64Binary(enKey.getEncoded());
+			
 			log("Authentication Encryption key: " + encryptionKey);
+			waitForCont();
+			
 			encryptedKey = encryptWithRSA(encryptionKey, pbKey);
 		} catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException
 				| BadPaddingException e) {
@@ -182,14 +227,16 @@ public class Crypto {
 		}
 		
 		log("Encrypted authentication encryption Key: " + encryptedKey);
-		
 		waitForCont();
+		
 		return encryptedKey;
 	}
 	
 	/**
-	 * Signs the timestamp and shared DH
-	 * This steps lets the client verify the server's identity
+	 * Signs the timestamp and shared DH with sender's private key
+	 * used to verify the sender's identity
+	 * @param secretValue - g^(ab) mod p
+	 * @param pvKey - private key of sender
 	 * @return
 	 */
 	protected String signAuthenticationMessage(BigInteger secretValue, PrivateKey pvKey) {		
@@ -198,7 +245,8 @@ public class Crypto {
 			long timestamp = System.currentTimeMillis();
 			BigInteger sharedDH = calculateSharedDH(secretValue);
 				
-			log("Encrypting timestamp (" + timestamp + ") and shared DH (" + sharedDH.toString() + ") for authentication...");
+			log('\n' + "Signing timestamp (" + timestamp + ") and shared DH (" + sharedDH.toString() + ") for authentication..." + '\n');
+			
 			signedMsg = encryptWithRSA(Long.toString(timestamp) + ";" + sharedDH.toString(), pvKey);
 		} catch (InvalidKeyException | NoSuchAlgorithmException | NoSuchPaddingException | IllegalBlockSizeException
 				| BadPaddingException e) {
@@ -208,17 +256,17 @@ public class Crypto {
 		}
 		
 		log("Signed timestap and shared DH: " + signedMsg);
-		
 		waitForCont();
+		
 		return signedMsg;
 	}
 	
 	/**
-	 * Encrypts the authentication message with the key encrypted by the client's public key
-	 * This step verifies client's indentity
-	 * @param message
-	 * @param enKey
-	 * @return
+	 * Encrypts the authentication message with the key encrypted by the receiver's public key
+	 * Used verifies receiver's indentity
+	 * @param message - message to encrypt
+	 * @param enKey - encryption key
+	 * @return encrypted message
 	 */
 	protected String encryptAuthenticationMessage(String message, SecretKey enKey) {
 		String encryptedMsg;
@@ -233,21 +281,33 @@ public class Crypto {
 		}
 		
 		log("Final authentication message:" + encryptedMsg);
-		
 		waitForCont();
+		
 		return encryptedMsg;
 	}
 	
+	/**
+	 * Generates MAC from message
+	 */
+	protected String generateMAC(String message, String keyString) throws InvalidKeyException, NoSuchAlgorithmException {
+		Mac mac = Mac.getInstance(ALGORITHM_MAC);
+		mac.init(generateSecretKey(keyString.getBytes(), ALGORITHM_MAC));
+		byte[] digest = mac.doFinal(message.getBytes());
+		return DatatypeConverter.printBase64Binary(digest);
+	}
+	
+	/**
+	 * Generates key for encrypting messages using g^(ab) mod p
+	 */
 	protected SecretKey generateMessageKey(BigInteger secretDH) throws NoSuchAlgorithmException {
 		MessageDigest md = MessageDigest.getInstance(ALGORITHM_HASH);
-		byte[] msgKeyByte = md.digest(secretDH.toByteArray());
-		return new SecretKeySpec(msgKeyByte, 0, msgKeyByte.length, ALGORITHM_ENCRYPTION);
+		byte[] msgKeyBytes = md.digest(secretDH.toByteArray());
+		return generateSecretKey(msgKeyBytes);
 	}
 	
-	protected SecretKey generateSecretKey(byte[] keyBytes) {
-		return new SecretKeySpec(keyBytes, 0, keyBytes.length, ALGORITHM_ENCRYPTION);
-	}
-	
+	/**
+	 * Generates private key from string
+	 */
 	protected PrivateKey generatePrivateKey(String protectedKey) throws NoSuchAlgorithmException, InvalidKeySpecException {
 		KeyFactory kf = KeyFactory.getInstance(ALGORITHM_SIGNING);
 		
@@ -256,6 +316,9 @@ public class Crypto {
 		return kf.generatePrivate(keySpecPv);
 	}
 	
+	/**
+	 * Generates public key from string
+	 */
 	protected PublicKey generatePublicKey(String publicKey) throws NoSuchAlgorithmException, InvalidKeySpecException {
 		KeyFactory kf = KeyFactory.getInstance(ALGORITHM_SIGNING);
 		
@@ -264,16 +327,39 @@ public class Crypto {
 		return kf.generatePublic(keySpecPb);	
 	}
 	
+	/**
+	 * Generates a random secret key for AES encryption
+	 */
 	protected SecretKey generateSecretKey() throws NoSuchAlgorithmException {
 		KeyGenerator keyGen = KeyGenerator.getInstance(ALGORITHM_ENCRYPTION);
 		keyGen.init(128);
 		return keyGen.generateKey();
 	}
 	
+	/**
+	 * Generates a secret key for AES encryption with given key bytes
+	 */
+	protected SecretKey generateSecretKey(byte[] keyBytes) {
+		return generateSecretKey(keyBytes, ALGORITHM_ENCRYPTION);
+	}
+	
+	/**
+	 * Generates a secret key for given encryption algorithm with given key bytes
+	 */
+	protected SecretKey generateSecretKey(byte[] keyBytes, String algorithm) {
+		return new SecretKeySpec(keyBytes, 0, keyBytes.length, algorithm);
+	}
+	
+	/**
+	 * Convenient method for logging authentication process
+	 */
 	protected void log(String msg) {
 		VirtualPrivateNetwork.log(msg);
 	}
 
+	/**
+	 * Waits for continue button to be clicked before moving to the next step in authentication
+	 */
 	protected void waitForCont() {
 		while(!VirtualPrivateNetwork.getContinue()) {
 			try {
