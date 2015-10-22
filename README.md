@@ -1,30 +1,20 @@
-# CPEN442-VPN
+Instructions:
 
-To run this locally, open two terminals. In one, do:  
-    python vpn.py  
-In the other, do:  
-    python client.py  
-	
-	
-	
-To run the java:
- 
-1) double click and open two instances of the jar file (it is an executable)  
+1) Open up two instances of the program by double clicking on the jar file (the jar file is an executable).
 
-2) on the first one, configure as needed and then click start connection 
+2) On one window, server mode is automatically selected. Configure host and port as needed as well as change shared secret value to desired value.
 
-3) on the second one, configure to be the same as server then click on client before starting connection 
+3) One the second window, click on client button to switch to client mode. Configure host, port and shared secret value to reflect the server.
 
-4) instructions stop at each step, click continue to move on to the next step 
+4) Click start on the server first, because the client needs a server to connect to.
 
-5) when both windows says "Connection confirmed", meessagse can now be sent from client to server 
+5) Once the server has started and is waiting for the client, click start on the client. If the host and port are the same, a connection should be established and authentication will begin.
 
-6) to send message, type in data to send and press enter 
+6) The program is set to move step by step in accordance to the continue button. Click on the continue button on the client to go through the steps until it says it is waiting for server response. 
 
-7) messages should appear in data as received window on server 
+7) Click on continue on the server until it says communication is established.
 
+8) Click on continue on the client until it says communication is established.
 
-note 1: server must start connection first, otherwise client will fail because it cannot find server's port 
-note 2: timestamp (used as a nonce) is set to expire after 1 minute, so authentication will fail if you wait a 
-minute before pressing continue 
+9) You can now type into the “Data to be sent” fields on either window. To send the message, click on send. 
 
