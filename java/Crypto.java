@@ -371,30 +371,6 @@ public class Crypto {
 	}
 	
 	/**
-	 * Decrypts the message and prints it on the display
-	 */
-	protected void readEncryptedMessage(String input) throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException {
-		log("Incoming message: " + input);
-		input = decryptWithAES(input, msgKey);
-		
-		String[] parts = input.split(DIVIDER);
-		
-		if (checkMAC(parts[0], parts[1]))
-			VirtualPrivateNetwork.display(parts[0]);
-		else
-			log("MAC incorrect.");
-	}
-	
-	/**
-	 * Validates the mac
-	 */
-	protected boolean checkMAC(String message, String mac) throws InvalidKeyException, NoSuchAlgorithmException {
-		String macCheck = generateMAC(message, VirtualPrivateNetwork.getMACKey());
-		log('\n' + "MAC: " + macCheck);
-		return macCheck.equals(mac);	
-	}
-	
-	/**
 	 * Convenient method for logging authentication process
 	 */
 	protected void log(String msg) {
@@ -441,6 +417,34 @@ public class Crypto {
 	}
 	
 	/**
+	 * Decrypts the message and prints it on the display
+	 */
+	protected void readEncryptedMessage(String input) throws InvalidKeyException, NoSuchAlgorithmException, NoSuchPaddingException, IllegalBlockSizeException, BadPaddingException {
+		log("Incoming message: " + input);
+		
+		//part[0] has message, part[1] has MAC
+		String[] parts = input.split(DIVIDER);
+		
+		parts[0] = decryptWithAES(parts[0], msgKey);
+		
+		if (checkMAC(parts[0], parts[1])) {
+			
+			VirtualPrivateNetwork.display(parts[0]);
+		} else {
+			log('\n' + "MAC incorrect.");
+		}
+	}
+	
+	/**
+	 * Validates the mac
+	 */
+	protected boolean checkMAC(String message, String mac) throws InvalidKeyException, NoSuchAlgorithmException {
+		String macCheck = generateMAC(message, VirtualPrivateNetwork.getMACKey());
+		log('\n' + "MAC: " + macCheck);
+		return macCheck.equals(mac);	
+	}
+	
+	/**
 	 * Writes to the server
 	 */
 	public void write(String output) {
@@ -448,8 +452,8 @@ public class Crypto {
 			String mac = generateMAC(output, VirtualPrivateNetwork.getMACKey());
 			log("MAC: " + mac);
 			
-			output += DIVIDER + mac;
 			output = encryptWithAES(output, msgKey);
+			output += DIVIDER + mac;
 			
 			VirtualPrivateNetwork.log('\n' + "Outgoing message:" + output);
 			out.writeBytes(output + '\n');
