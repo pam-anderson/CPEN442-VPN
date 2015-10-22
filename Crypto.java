@@ -26,9 +26,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import javax.xml.bind.DatatypeConverter;
 
-public class Crypto {
-	protected static final int MIN_SECRET_VALUE = 100;
-	
+public class Crypto {	
 	protected static final String DIVIDER = ";";
 	
 	protected static final String ALGORITHM_ENCRYPTION = "AES";
@@ -303,7 +301,8 @@ public class Crypto {
 	 */
 	protected void generateSecretValue() {
 		Random rand = new Random(System.currentTimeMillis());
-		n = BigInteger.valueOf(rand.nextInt(MIN_SECRET_VALUE) + MIN_SECRET_VALUE);
+		
+		n = new BigInteger(128, rand);
 	}
 	
 	/**
